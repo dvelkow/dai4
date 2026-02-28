@@ -1,0 +1,79 @@
+#!/bin/bash
+
+# ==========================================
+#   DAI — Launch N AI assistants in tmux
+# ==========================================
+# Usage:
+#   dai4                  → 4 panes, all claude
+#   dai4 codex            → 4 panes, all codex
+#   dai4 claude codex     → 2 claude + 2 codex
+#   dai2 / dai6 / dai8    → same logic, different pane counts
+
+# --- Pane count from script name (dai4 → 4, dai8 → 8, dai → 4) ---
+NUM="${0##*dai}"
+NUM="${NUM:-4}"
+if ! [[ "$NUM" =~ ^[0-9]+$ ]] || [ "$NUM" -lt 1 ]; then
+    echo "Usage: dai{2,4,6,8} [tool ...]"
+    exit 1
+fi
+
+# --- Check tmux ---
+if ! command -v tmux &>/dev/null; then
+    echo "tmux is not installed. Run: brew install tmux"
+    exit 1
+fi
+
+# --- Tool command mapping (customize if needed) ---
+tool_cmd() { echo "$1"; }
+
+# --- Determine tools (default: claude) ---
+TOOLS=("${@:-claude}")
+
+# --- Create session ---
+SESSION="dai${NUM}-$$"
+tmux new-session -d -s "$SESSION"
+
+# --- Split into N panes ---
+for ((i = 1; i < NUM; i++)); do
+    tmux split-window -t "$SESSION"
+    tmux select-layout -t "$SESSION" tiled
+done
+
+# --- Session config ---
+tmux set-option  -t "$SESSION" mouse on
+tmux set-option  -t "$SESSION" history-limit 50000
+tmux set-option  -t "$SESSION" default-terminal "screen-256color"
+tmux set-option  -t "$SESSION" escape-time 10
+tmux set-option  -t "$SESSION" allow-passthrough on
+tmux set-option  -t "$SESSION" focus-events on
+tmux set-option  -t "$SESSION" allow-rename off
+tmux set-option  -t "$SESSION" word-separators " -_@./"
+tmux set-option  -t "$SESSION" set-clipboard on
+tmux set-window-option -t "$SESSION" pane-active-border-style fg=green,bg=default
+tmux set-window-option -t "$SESSION" pane-border-style fg=color240,bg=default
+tmux set-window-option -t "$SESSION" mode-keys vi
+
+# --- Clipboard bindings ---
+tmux bind-key -T copy-mode-vi MouseDragEnd1Pane send-keys -X copy-pipe-and-cancel "pbcopy"
+tmux bind-key -T root MouseDown3Pane run-shell "pbpaste | tmux load-buffer - && tmux paste-buffer"
+tmux bind-key -T copy-mode-vi C-c send-keys -X copy-pipe-and-cancel "pbcopy"
+tmux bind-key -T copy-mode-vi v send-keys -X begin-selection
+tmux bind-key -T copy-mode-vi y send-keys -X copy-pipe-and-cancel "pbcopy"
+tmux bind-key -T root DoubleClick1Pane select-pane \; copy-mode \; send-keys -X select-word \; send-keys -X copy-pipe-and-cancel "pbcopy"
+tmux bind-key -T root MouseDown2Pane run-shell "pbpaste | tmux load-buffer - && tmux paste-buffer"
+
+# --- Status bar ---
+tmux set-option -t "$SESSION" status-position bottom
+tmux set-option -t "$SESSION" status-style bg=color235,fg=white
+tmux set-option -t "$SESSION" status-left "#[bg=green,fg=black,bold] ◩ DAI${NUM} PRO #[bg=default,fg=default] "
+tmux set-option -t "$SESSION" status-left-length 30
+tmux set-option -t "$SESSION" status-right "#[fg=cyan]%b %d, %Y #[fg=color240]| #[fg=yellow,bold]%I:%M %p "
+
+# --- Launch tools (cycle through args) ---
+for ((i = 0; i < NUM; i++)); do
+    cmd="$(tool_cmd "${TOOLS[$((i % ${#TOOLS[@]}))]}")"
+    tmux send-keys -t "$SESSION:0.$i" "clear; $cmd" C-m
+done
+
+# --- Attach ---
+tmux attach-session -t "$SESSION"
