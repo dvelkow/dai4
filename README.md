@@ -40,7 +40,7 @@ The session comes preconfigured with:
 
 ```bash
 # Clone the repo
-git clone https://github.com/YourUsername/dai4.git
+git clone https://github.com/dvelkow/dai4.git
 
 # Make it available globally
 # Option 1: Add to PATH
